@@ -1,0 +1,130 @@
+# =============================================================================
+# Topic: GetSailingSchedule
+# Type:  Custom Topic (invoked by orchestrator, NOT triggered by user utterances)
+# Agent: SailingScheduleAgent (connected, NOT user-facing)
+# =============================================================================
+# This topic is called directly by the ShippingOrchestrator via
+# InvokeConnectedAgent. It processes the route inputs, queries schedule data,
+# and populates output variables for the orchestrator to use.
+#
+# INPUT VARIABLES (provided by orchestrator):
+#   - Topic.OriginPort      : Departure port name
+#   - Topic.DestinationPort : Arrival port name
+#   - Topic.DateRange       : Preferred date window
+#
+# OUTPUT VARIABLES (returned to orchestrator):
+#   - Topic.ScheduleData    : Markdown table of sailings
+#   - Topic.ScheduleFound   : true/false
+#   - Topic.NextDeparture   : Soonest sailing details
+#   - Topic.BookingCutoff   : Cutoff date for next sailing
+#
+# NOTE: No SendActivity nodes address the user. All outputs go into variables.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: GetSailingSchedule
+displayName: Get Sailing Schedule
+
+beginDialog:
+  kind: OnBeginDialog  # Invoked programmatically, not by user utterance
+  id: main
+  actions:
+
+    # ── Step 1: Normalise input port names ────────────────────────────────────
+    - kind: SetVariable
+      id: normaliseOrigin
+      variable: Topic.NormalisedOrigin
+      value: =Trim(Upper(Topic.OriginPort))
+
+    - kind: SetVariable
+      id: normaliseDestination
+      variable: Topic.NormalisedDestination
+      value: =Trim(Upper(Topic.DestinationPort))
+
+    # ── Step 2: Query schedule data via Power Automate flow ───────────────────
+    # In production: replace with an HTTP request action or connector call
+    # that queries your schedule management system (e.g. CargoWise, Inttra).
+    # For demo purposes, this block shows the structure with sample data.
+    - kind: InvokeFlowAction
+      id: queryScheduleFlow
+      flowName: GetShippingSchedule  # Power Automate flow name
+      inputParameters:
+        - name: OriginPort
+          value: =Topic.NormalisedOrigin
+        - name: DestinationPort
+          value: =Topic.NormalisedDestination
+        - name: DateRange
+          value: =Topic.DateRange
+      outputParameters:
+        - name: RawScheduleJson
+          variable: Topic.RawScheduleJson
+        - name: RecordCount
+          variable: Topic.RecordCount
+
+    # ── Step 3: Determine if schedules were found ────────────────────────────
+    - kind: SetVariable
+      id: setScheduleFound
+      variable: Topic.ScheduleFound
+      value: =Topic.RecordCount > 0
+
+    # ── Step 4a: Format schedule table (records found) ────────────────────────
+    - kind: ConditionGroup
+      id: formatResponse
+      conditions:
+
+        - id: hasSchedules
+          condition: =Topic.ScheduleFound == true
+          actions:
+            # Transform raw JSON into a markdown table for the orchestrator
+            - kind: SetVariable
+              id: buildScheduleTable
+              variable: Topic.ScheduleData
+              value: |
+                =FormatScheduleTable(Topic.RawScheduleJson)
+                # ↑ Custom Power Fx function or expression that converts the
+                # JSON schedule response into a markdown table like:
+                # | Voyage  | Vessel      | Departure        | Arrival          | Transit |
+                # |---------|-------------|------------------|------------------|---------|
+                # | GL-2401 | MV StarRose | 2026-04-05 08:00 | 2026-04-19 14:00 | 14 days |
+
+            - kind: SetVariable
+              id: setNextDeparture
+              variable: Topic.NextDeparture
+              value: =ExtractNextDeparture(Topic.RawScheduleJson)
+              # Returns: "2026-04-05 aboard MV StarRose (Voyage GL-2401)"
+
+            - kind: SetVariable
+              id: setBookingCutoff
+              variable: Topic.BookingCutoff
+              value: =ExtractBookingCutoff(Topic.RawScheduleJson)
+              # Returns: "2026-04-02 23:59 UTC"
+
+        # ── Step 4b: No schedules found ───────────────────────────────────────
+        - id: noSchedules
+          condition: =true
+          actions:
+            - kind: SetVariable
+              id: setEmptyScheduleData
+              variable: Topic.ScheduleData
+              value: "*No sailings found for this route within the requested timeframe.*"
+
+            - kind: SetVariable
+              id: setNoNextDeparture
+              variable: Topic.NextDeparture
+              value: "N/A"
+
+            - kind: SetVariable
+              id: setNoCutoff
+              variable: Topic.BookingCutoff
+              value: "N/A"
+
+    # ── Step 5: Return output variables to orchestrator ───────────────────────
+    # The EndDialog action signals the orchestrator that processing is complete.
+    # All populated Topic.* output variables are accessible to the orchestrator.
+    - kind: EndDialog
+      id: returnToOrchestrator
+      # Output variables automatically returned:
+      #   Topic.ScheduleData    → orchestrator's Topic.ScheduleData
+      #   Topic.ScheduleFound   → orchestrator's Topic.ScheduleFound
+      #   Topic.NextDeparture   → orchestrator's Topic.NextDeparture
+      #   Topic.BookingCutoff   → orchestrator's Topic.BookingCutoff

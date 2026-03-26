@@ -1,0 +1,183 @@
+# =============================================================================
+# Topic: GetPortLocation
+# Type:  Custom Topic (invoked by orchestrator, NOT triggered by user utterances)
+# Agent: PortLocationAgent (connected, NOT user-facing)
+# =============================================================================
+# This topic is called directly by the ShippingOrchestrator via
+# InvokeConnectedAgent. It resolves port names, retrieves location data,
+# and populates output variables for the orchestrator to use.
+#
+# INPUT VARIABLES (provided by orchestrator):
+#   - Topic.PortName  : Port name, abbreviation, or UN/LOCODE
+#   - Topic.InfoType  : Requested info type ("all", "1", "2,3", etc.)
+#
+# OUTPUT VARIABLES (returned to orchestrator):
+#   - Topic.PortFound    : Boolean
+#   - Topic.PortFullName : Official port name
+#   - Topic.Country      : Country
+#   - Topic.Region       : Region/state
+#   - Topic.Locode       : UN/LOCODE
+#   - Topic.Coordinates  : GPS lat/lon
+#   - Topic.Address      : Port authority address
+#   - Topic.Facilities   : Available facilities
+#   - Topic.ContactInfo  : Contact details
+#
+# NOTE: No SendActivity nodes address the user. All outputs go into variables.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: GetPortLocation
+displayName: Get Port Location
+
+beginDialog:
+  kind: OnBeginDialog  # Invoked programmatically, not by user utterance
+  id: main
+  actions:
+
+    # ── Step 1: Normalise port name input ─────────────────────────────────────
+    - kind: SetVariable
+      id: normalisePortName
+      variable: Topic.NormalisedPortName
+      value: =Trim(Topic.PortName)
+
+    # ── Step 2: Check if input looks like a UN/LOCODE ─────────────────────────
+    - kind: SetVariable
+      id: detectLocode
+      variable: Topic.IsLocode
+      value: =And(Len(Topic.NormalisedPortName) == 5, IsUpper(Topic.NormalisedPortName))
+
+    # ── Step 3: Query port database ───────────────────────────────────────────
+    # In production: replace with HTTP action to your port database API
+    # or use the Ships & Ports connector from the Power Platform connectors list.
+    - kind: ConditionGroup
+      id: queryByType
+      conditions:
+
+        - id: queryByLocode
+          condition: =Topic.IsLocode == true
+          actions:
+            - kind: InvokeFlowAction
+              id: lookupByLocode
+              flowName: LookupPortByLocode
+              inputParameters:
+                - name: Locode
+                  value: =Topic.NormalisedPortName
+              outputParameters:
+                - name: PortJson
+                  variable: Topic.PortJson
+                - name: Found
+                  variable: Topic.PortFound
+
+        - id: queryByName
+          condition: =true
+          actions:
+            - kind: InvokeFlowAction
+              id: lookupByName
+              flowName: LookupPortByName
+              inputParameters:
+                - name: PortName
+                  value: =Topic.NormalisedPortName
+              outputParameters:
+                - name: PortJson
+                  variable: Topic.PortJson
+                - name: Found
+                  variable: Topic.PortFound
+
+    # ── Step 4a: Extract port fields from response ────────────────────────────
+    - kind: ConditionGroup
+      id: extractPortData
+      conditions:
+
+        - id: portFound
+          condition: =Topic.PortFound == true
+          actions:
+            - kind: SetVariable
+              id: setPortFullName
+              variable: Topic.PortFullName
+              value: =Topic.PortJson.officialName
+
+            - kind: SetVariable
+              id: setCountry
+              variable: Topic.Country
+              value: =Topic.PortJson.country
+
+            - kind: SetVariable
+              id: setRegion
+              variable: Topic.Region
+              value: =Topic.PortJson.region
+
+            - kind: SetVariable
+              id: setLocode
+              variable: Topic.Locode
+              value: =Topic.PortJson.locode
+
+            - kind: SetVariable
+              id: setCoordinates
+              variable: Topic.Coordinates
+              value: =Concatenate(Text(Topic.PortJson.latitude), "° N, ", Text(Topic.PortJson.longitude), "° E")
+
+            - kind: SetVariable
+              id: setAddress
+              variable: Topic.Address
+              value: =Topic.PortJson.portAuthorityAddress
+
+            - kind: SetVariable
+              id: setFacilities
+              variable: Topic.Facilities
+              value: =JoinStrings(Topic.PortJson.facilities, ", ")
+
+            - kind: SetVariable
+              id: setContactInfo
+              variable: Topic.ContactInfo
+              value: =Concatenate(Topic.PortJson.email, " | ", Topic.PortJson.phone)
+
+        # ── Step 4b: Port not found — set empty defaults ──────────────────────
+        - id: portNotFound
+          condition: =true
+          actions:
+            - kind: SetVariable
+              id: setNotFoundDefaults
+              variable: Topic.PortFullName
+              value: ""
+            - kind: SetVariable
+              id: clearCountry
+              variable: Topic.Country
+              value: ""
+            - kind: SetVariable
+              id: clearRegion
+              variable: Topic.Region
+              value: ""
+            - kind: SetVariable
+              id: clearLocode
+              variable: Topic.Locode
+              value: ""
+            - kind: SetVariable
+              id: clearCoordinates
+              variable: Topic.Coordinates
+              value: ""
+            - kind: SetVariable
+              id: clearAddress
+              variable: Topic.Address
+              value: ""
+            - kind: SetVariable
+              id: clearFacilities
+              variable: Topic.Facilities
+              value: ""
+            - kind: SetVariable
+              id: clearContact
+              variable: Topic.ContactInfo
+              value: ""
+
+    # ── Step 5: Return all output variables to orchestrator ───────────────────
+    - kind: EndDialog
+      id: returnToOrchestrator
+      # Output variables automatically returned to ShippingOrchestrator:
+      #   Topic.PortFound      → orchestrator's Topic.PortFound
+      #   Topic.PortFullName   → orchestrator's Topic.PortFullName
+      #   Topic.Country        → orchestrator's Topic.Country
+      #   Topic.Region         → orchestrator's Topic.Region
+      #   Topic.Locode         → orchestrator's Topic.Locode
+      #   Topic.Coordinates    → orchestrator's Topic.Coordinates
+      #   Topic.Address        → orchestrator's Topic.Address
+      #   Topic.Facilities     → orchestrator's Topic.Facilities
+      #   Topic.ContactInfo    → orchestrator's Topic.ContactInfo

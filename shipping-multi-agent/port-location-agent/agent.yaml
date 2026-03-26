@@ -1,0 +1,126 @@
+# =============================================================================
+# Port Location Agent - Connected Specialist Agent
+# =============================================================================
+# This agent is a CONNECTED AGENT. It is NOT user-facing.
+#
+# KEY CONFIGURATION:
+#   respondDirectlyToUser: false  ← Connected agents MUST have this set
+#   isOrchestratorAgent: false    ← This is a specialist, not an orchestrator
+#   handoffBehavior: ReturnToOrchestrator ← Always returns data to parent
+#
+# HOW IT WORKS:
+#   1. The ShippingOrchestrator invokes this agent via InvokeConnectedAgent
+#   2. This agent resolves the port name and retrieves location/facility data
+#   3. It returns structured port data back to the orchestrator
+#   4. The orchestrator formats the data and replies to the user
+#   5. This agent NEVER writes messages directly to the user
+#
+# RESPONSIBILITIES:
+#   - Resolve port names to their official names and UN/LOCODE codes
+#   - Return GPS coordinates, country, and region information
+#   - Return available terminal and facility details
+#   - Return port authority contact information
+#   - Handle partial/ambiguous port name matching
+# =============================================================================
+
+kind: Agent
+schemaVersion: "2.0"
+name: PortLocationAgent
+displayName: Port Location Agent
+description: |
+  Specialist agent that retrieves port location and facility information.
+  Resolves port names to official names, UN/LOCODE codes, GPS coordinates,
+  country/region data, terminal facilities, and contact information.
+  Returns structured data to the orchestrating agent — never responds
+  directly to end users.
+locale: en-us
+
+# ── CRITICAL: This agent is a connected specialist — NOT user-facing ──────────
+orchestration:
+  isOrchestratorAgent: false
+  isGenerativeOrchestrationEnabled: false  # Direct topic invocation only
+  respondDirectlyToUser: false             # ← MUST be false for connected agents
+  handoffBehavior: ReturnToOrchestrator    # ← Always return to parent orchestrator
+
+# ── System instructions ───────────────────────────────────────────────────────
+instructions: |
+  You are the Port Information specialist for GlobalShip Logistics.
+
+  IMPORTANT: You are a BACKEND agent. You do NOT communicate with end users.
+  You receive port name queries from the ShippingOrchestrator and return
+  structured port data for the orchestrator to present to users.
+
+  RESPONSE FORMAT: Always populate output variables with structured data.
+  Never address the user, add greetings, or include conversational text.
+
+  PORT NAME RESOLUTION:
+  - Accept common names, abbreviations, and UN/LOCODEs as input
+  - Always return the official UNECE port name
+  - Handle common variations (e.g. "Rotterdam" → "Port of Rotterdam",
+    "LA" or "Los Angeles" → "Port of Los Angeles")
+  - If port name is ambiguous, return the most globally significant match
+    and note alternatives in the Facilities field
+
+  DATA TO RETURN (as output variables):
+  - PortFound: true/false boolean
+  - PortFullName: Official port name
+  - Country: Country name
+  - Region: State/province/region
+  - Locode: UN/LOCODE (e.g. NLRTM, USLAX)
+  - Coordinates: Decimal degrees lat/lon
+  - Address: Port authority street address
+  - Facilities: Comma-separated list of available facilities
+  - ContactInfo: Email and phone for port authority
+
+  NEVER:
+  - Address the user directly
+  - Add conversational filler or pleasantries
+  - Return empty responses without a PortFound flag
+
+# ── Topics ────────────────────────────────────────────────────────────────────
+topics:
+  customTopics:
+    - file: topics/GetPortLocation.yaml
+    - file: topics/GetPortDetails.yaml
+
+# ── Output variables (contract with orchestrator) ────────────────────────────
+outputVariables:
+  - name: PortFound
+    type: Boolean
+    description: Whether the port was found in the database
+  - name: PortFullName
+    type: String
+    description: Official UNECE port name
+  - name: Country
+    type: String
+    description: Country where port is located
+  - name: Region
+    type: String
+    description: State, province, or region
+  - name: Locode
+    type: String
+    description: UN/LOCODE identifier (e.g. NLRTM)
+  - name: Coordinates
+    type: String
+    description: GPS coordinates in decimal degrees (lat, lon)
+  - name: Address
+    type: String
+    description: Port authority street address
+  - name: Facilities
+    type: String
+    description: Available terminal and cargo handling facilities
+  - name: ContactInfo
+    type: String
+    description: Port authority email and phone number
+
+# ── Knowledge / Data Sources ──────────────────────────────────────────────────
+# Uncomment and configure to connect to live port data systems
+# knowledge:
+#   - kind: CustomConnector
+#     connectorId: globalship-port-database
+#     operations:
+#       - LookupPortByName
+#       - LookupPortByLocode
+#       - GetPortFacilities
+#   - kind: PublicWebsite
+#     url: https://www.unece.org/cefact/locode/service/location

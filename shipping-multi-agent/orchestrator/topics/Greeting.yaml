@@ -1,0 +1,64 @@
+# =============================================================================
+# Topic: Greeting
+# Type:  System Topic (triggered on conversation start)
+# Agent: ShippingOrchestrator (user-facing)
+# =============================================================================
+# Welcomes the user and captures their name for personalised responses.
+# Sets Global.CustomerName so all subsequent topics can address them by name.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: Greeting
+displayName: Greeting
+
+beginDialog:
+  kind: OnConversationStart
+  id: main
+  actions:
+
+    # ── Step 1: Welcome message ───────────────────────────────────────────────
+    - kind: SendActivity
+      id: sendWelcome
+      activity: |
+        👋 Welcome to **GlobalShip Logistics Assistant**!
+
+        I can help you with:
+        - 🗓️ **Sailing schedules** — departure/arrival dates, transit times, vessel info
+        - 🗺️ **Port locations** — where ports are, facilities, UN/LOCODE codes
+
+        How can I assist you today?
+
+    # ── Step 2: Capture customer name (optional) ──────────────────────────────
+    - kind: Question
+      id: askName
+      interruptionPolicy:
+        allowInterruption: false
+      variable: init:Global.CustomerName
+      prompt: |
+        May I have your name so I can personalise your experience?
+        (You can also type **skip** to continue.)
+      entity: StringPrebuiltEntity
+      validations:
+        - kind: TextValidation
+          successCondition: =Length(Global.CustomerName) > 0
+
+    # ── Step 3: Personalised acknowledgement ──────────────────────────────────
+    - kind: ConditionGroup
+      id: checkName
+      conditions:
+        - id: nameProvided
+          condition: =toLower(Global.CustomerName) != "skip" && Length(Global.CustomerName) > 0
+          actions:
+            - kind: SendActivity
+              id: sendPersonalisedGreeting
+              activity: |
+                Great to meet you, **{Global.CustomerName}**! 😊
+                What would you like to know about our shipping services?
+
+        - id: nameSkipped
+          condition: =true
+          actions:
+            - kind: SendActivity
+              id: sendGenericGreeting
+              activity: |
+                No problem! What would you like to know about our shipping services?

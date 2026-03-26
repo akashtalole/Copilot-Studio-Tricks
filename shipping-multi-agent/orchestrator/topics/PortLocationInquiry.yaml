@@ -1,0 +1,193 @@
+# =============================================================================
+# Topic: PortLocationInquiry
+# Type:  Custom Topic
+# Agent: ShippingOrchestrator (user-facing)
+# =============================================================================
+# Handles port location and details queries from end users.
+#
+# MULTI-AGENT FLOW:
+#   User → Orchestrator (this topic) → PortLocationAgent (connected)
+#                                           ↓ returns data
+#   User ← Orchestrator (formats & presents result) ←─────────────────────────
+#
+# The PortLocationAgent has respondDirectlyToUser: false, so it never
+# replies to the user. All communication to the user goes through here.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: PortLocationInquiry
+displayName: Port Location Inquiry
+
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Port Location Inquiry
+    triggerQueries:
+      - Where is the port of Rotterdam?
+      - Port location for Shanghai
+      - Tell me about Port of Los Angeles
+      - What country is Hamburg port in?
+      - Port facilities at Singapore
+      - UN LOCODE for Felixstowe
+      - Port code for Antwerp
+      - What are the coordinates of Dubai port?
+      - Port of New York details
+      - Nearest port to me
+      - Port address
+      - Port terminal information
+
+  actions:
+
+    # ── Step 1: Acknowledge the request ──────────────────────────────────────
+    - kind: SendActivity
+      id: ackRequest
+      activity: |
+        I'll look up that port information for you. 🗺️
+
+    # ── Step 2: Collect port name ─────────────────────────────────────────────
+    - kind: Question
+      id: askPortName
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.PortName
+      prompt: |
+        Which port would you like information about?
+        (e.g. Rotterdam, Shanghai, Los Angeles, Hamburg)
+      entity: StringPrebuiltEntity
+
+    # ── Step 3: What information is needed? ───────────────────────────────────
+    - kind: Question
+      id: askInfoType
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.InfoType
+      prompt: |
+        What information do you need? (You can select multiple or type **all**)
+        1. Location & address
+        2. UN/LOCODE port code
+        3. GPS coordinates
+        4. Available facilities
+        5. Contact details
+        Type the number(s) or **all** for complete port profile.
+      entity: StringPrebuiltEntity
+
+    # ── Step 4: Save to global state ─────────────────────────────────────────
+    - kind: SetVariable
+      id: savePort
+      variable: Global.LastQueriedPort
+      value: =Topic.PortName
+
+    # ── Step 5: Invoke PortLocationAgent (connected agent) ────────────────────
+    # The connected agent resolves the port data and returns it structured.
+    # It does NOT respond to the user — respondDirectlyToUser: false.
+    - kind: InvokeConnectedAgent
+      id: callPortAgent
+      agentName: PortLocationAgent
+      topicName: GetPortLocation
+      # Pass parameters to the connected agent
+      inputParameters:
+        - name: PortName
+          value: =Topic.PortName
+        - name: InfoType
+          value: =Topic.InfoType
+      # Capture the structured response from the connected agent
+      outputParameters:
+        - name: PortFound
+          variable: Topic.PortFound
+        - name: PortFullName
+          variable: Topic.PortFullName
+        - name: Country
+          variable: Topic.Country
+        - name: Region
+          variable: Topic.Region
+        - name: Locode
+          variable: Topic.Locode
+        - name: Coordinates
+          variable: Topic.Coordinates
+        - name: Address
+          variable: Topic.Address
+        - name: Facilities
+          variable: Topic.Facilities
+        - name: ContactInfo
+          variable: Topic.ContactInfo
+
+    # ── Step 6: Format and present the result ────────────────────────────────
+    - kind: ConditionGroup
+      id: checkPortResult
+      conditions:
+
+        - id: portFound
+          condition: =Topic.PortFound == true
+          actions:
+            - kind: SendActivity
+              id: sendPortDetails
+              activity: |
+                Here is the port profile for **{Topic.PortFullName}**:
+
+                | Field           | Details                    |
+                |-----------------|----------------------------|
+                | Country         | {Topic.Country}            |
+                | Region          | {Topic.Region}             |
+                | UN/LOCODE       | {Topic.Locode}             |
+                | Coordinates     | {Topic.Coordinates}        |
+                | Address         | {Topic.Address}            |
+                | Facilities      | {Topic.Facilities}         |
+                | Contact         | {Topic.ContactInfo}        |
+
+                Is there anything specific about **{Topic.PortFullName}** you'd
+                like to know more about?
+
+        - id: portNotFound
+          condition: =true
+          actions:
+            - kind: SendActivity
+              id: sendPortNotFound
+              activity: |
+                I'm sorry, I couldn't find details for a port named **"{Topic.PortName}"**.
+
+                Suggestions:
+                - Check the spelling or try the full official port name
+                - Try the UN/LOCODE directly (e.g. NLRTM for Rotterdam)
+                - Contact our operations team at ops@globalship.com
+
+                Is there anything else I can help with?
+
+    # ── Step 7: Offer sailing schedule follow-up ──────────────────────────────
+    - kind: ConditionGroup
+      id: offerScheduleFollowUp
+      conditions:
+        - id: portWasFound
+          condition: =Topic.PortFound == true
+          actions:
+            - kind: Question
+              id: askScheduleFollowUp
+              interruptionPolicy:
+                allowInterruption: true
+              variable: init:Topic.ScheduleFollowUp
+              prompt: |
+                Would you like to see **sailing schedules** departing from or
+                arriving at {Topic.PortFullName}? (yes / no)
+              entity: StringPrebuiltEntity
+
+            - kind: ConditionGroup
+              id: checkScheduleFollowUp
+              conditions:
+                - id: wantsSchedule
+                  condition: =toLower(Topic.ScheduleFollowUp) == "yes"
+                  actions:
+                    - kind: SetVariable
+                      id: presetOriginPort
+                      variable: Global.LastQueriedRoute
+                      value: =Topic.PortFullName
+                    - kind: BeginDialog
+                      id: redirectToScheduleTopic
+                      dialog: SailingScheduleInquiry
+
+                - id: noSchedule
+                  condition: =true
+                  actions:
+                    - kind: SendActivity
+                      id: sendFinalClose
+                      activity: |
+                        Is there anything else I can help you with today?

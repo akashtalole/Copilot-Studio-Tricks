@@ -1,0 +1,173 @@
+# =============================================================================
+# Topic: SailingScheduleInquiry
+# Type:  Custom Topic
+# Agent: ShippingOrchestrator (user-facing)
+# =============================================================================
+# Handles sailing schedule queries from end users.
+#
+# MULTI-AGENT FLOW:
+#   User → Orchestrator (this topic) → SailingScheduleAgent (connected)
+#                                           ↓ returns data
+#   User ← Orchestrator (formats & presents result) ←─────────────────────────
+#
+# The SailingScheduleAgent has respondDirectlyToUser: false, so it never
+# replies to the user. All communication to the user goes through here.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: SailingScheduleInquiry
+displayName: Sailing Schedule Inquiry
+
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Sailing Schedule Inquiry
+    # Training phrases — the generative orchestrator also uses agent/topic
+    # descriptions for routing, but explicit phrases improve accuracy.
+    triggerQueries:
+      - What is the sailing schedule?
+      - When does the ship depart?
+      - Show me sailing schedules from Shanghai
+      - Next vessel from Rotterdam to New York
+      - Departure dates from Hamburg
+      - What ships are sailing to Los Angeles?
+      - Schedule from Singapore to Dubai
+      - Transit time from Felixstowe to Montreal
+      - Voyage schedule
+      - When is the next sailing?
+      - Available sailings this month
+      - Booking cutoff for next departure
+
+  actions:
+
+    # ── Step 1: Acknowledge the request ──────────────────────────────────────
+    - kind: SendActivity
+      id: ackRequest
+      activity: |
+        Let me look up the sailing schedule for you. 🔍
+
+    # ── Step 2: Collect origin port ──────────────────────────────────────────
+    - kind: Question
+      id: askOriginPort
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.OriginPort
+      prompt: Which **origin port** are you sailing from? (e.g. Shanghai, Rotterdam, Hamburg)
+      entity: StringPrebuiltEntity
+
+    # ── Step 3: Collect destination port ─────────────────────────────────────
+    - kind: Question
+      id: askDestinationPort
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.DestinationPort
+      prompt: Which **destination port** are you sailing to? (e.g. Los Angeles, New York, Singapore)
+      entity: StringPrebuiltEntity
+
+    # ── Step 4: Optional date range ───────────────────────────────────────────
+    - kind: Question
+      id: askDateRange
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.DateRange
+      prompt: |
+        Do you have a preferred departure window?
+        (e.g. "next 2 weeks", "April 2026", or type **any** for all upcoming sailings)
+      entity: StringPrebuiltEntity
+
+    # ── Step 5: Save route to global state ───────────────────────────────────
+    - kind: SetVariable
+      id: saveRoute
+      variable: Global.LastQueriedRoute
+      value: =Concatenate(Topic.OriginPort, " → ", Topic.DestinationPort)
+
+    # ── Step 6: Invoke SailingScheduleAgent (connected agent) ─────────────────
+    # The connected agent processes the query internally and returns a structured
+    # result. It does NOT respond to the user — respondDirectlyToUser: false.
+    - kind: InvokeConnectedAgent
+      id: callSailingAgent
+      agentName: SailingScheduleAgent
+      topicName: GetSailingSchedule
+      # Pass route parameters to the connected agent
+      inputParameters:
+        - name: OriginPort
+          value: =Topic.OriginPort
+        - name: DestinationPort
+          value: =Topic.DestinationPort
+        - name: DateRange
+          value: =Topic.DateRange
+      # Capture the structured response from the connected agent
+      outputParameters:
+        - name: ScheduleData
+          variable: Topic.ScheduleData
+        - name: ScheduleFound
+          variable: Topic.ScheduleFound
+        - name: NextDeparture
+          variable: Topic.NextDeparture
+
+    # ── Step 7: Present results to user (orchestrator formats the response) ───
+    - kind: ConditionGroup
+      id: checkScheduleResult
+      conditions:
+
+        - id: scheduleFound
+          condition: =Topic.ScheduleFound == true
+          actions:
+            - kind: SendActivity
+              id: sendScheduleResult
+              activity: |
+                Here are the upcoming sailings on the **{Global.LastQueriedRoute}** route:
+
+                {Topic.ScheduleData}
+
+                📅 **Next departure:** {Topic.NextDeparture}
+
+                Would you like to know more about any of these sailings, or can I help
+                you with port information for any of these locations?
+
+        - id: scheduleNotFound
+          condition: =true
+          actions:
+            - kind: SendActivity
+              id: sendNoSchedule
+              activity: |
+                I'm sorry, I couldn't find any upcoming sailings for the
+                **{Global.LastQueriedRoute}** route within your requested timeframe.
+
+                Here are some options:
+                - Try a **broader date range** (e.g. "next 3 months")
+                - Check alternative nearby ports
+                - Contact our bookings team at bookings@globalship.com
+
+                Is there anything else I can help you with?
+
+    # ── Step 8: Offer follow-up ───────────────────────────────────────────────
+    - kind: Question
+      id: askFollowUp
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.FollowUp
+      prompt: |
+        Would you also like me to provide **port details** for
+        {Topic.OriginPort} or {Topic.DestinationPort}?
+        (yes / no)
+      entity: StringPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: checkFollowUp
+      conditions:
+        - id: wantsPortInfo
+          condition: =toLower(Topic.FollowUp) == "yes"
+          actions:
+            - kind: BeginDialog
+              id: redirectToPortTopic
+              dialog: PortLocationInquiry
+
+        - id: noFollowUp
+          condition: =true
+          actions:
+            - kind: SendActivity
+              id: sendClosing
+              activity: |
+                Great! Is there anything else I can help you with today?

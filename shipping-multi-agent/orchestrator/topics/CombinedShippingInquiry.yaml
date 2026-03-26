@@ -1,0 +1,135 @@
+# =============================================================================
+# Topic: CombinedShippingInquiry
+# Type:  Custom Topic
+# Agent: ShippingOrchestrator (user-facing)
+# =============================================================================
+# Handles queries that span BOTH sailing schedules AND port information.
+# Demonstrates parallel invocation of two connected agents in one topic.
+#
+# MULTI-AGENT FLOW (parallel):
+#   User → Orchestrator ─┬→ SailingScheduleAgent (connected, no direct reply)
+#                        └→ PortLocationAgent    (connected, no direct reply)
+#                              ↓ both return data
+#   User ← Orchestrator (merges results into one unified response)
+# =============================================================================
+
+kind: AdaptiveDialog
+name: CombinedShippingInquiry
+displayName: Combined Shipping Inquiry
+
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Combined Shipping Inquiry
+    triggerQueries:
+      - Schedule from Hamburg with port details
+      - Tell me about sailings from Rotterdam and the port facilities
+      - I need schedule and port info for Singapore
+      - Voyage details including port information
+      - What's sailing from Antwerp and where is it located?
+      - Complete shipping information for Shanghai
+
+  actions:
+
+    # ── Step 1: Acknowledge combined query ────────────────────────────────────
+    - kind: SendActivity
+      id: ackCombined
+      activity: |
+        I'll pull up both the sailing schedule and port information for you
+        at the same time. Just a moment! ⚓📍
+
+    # ── Step 2: Collect required parameters ──────────────────────────────────
+    - kind: Question
+      id: askPort
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.PortOfInterest
+      prompt: Which port would you like information about?
+      entity: StringPrebuiltEntity
+
+    - kind: Question
+      id: askDestination
+      interruptionPolicy:
+        allowInterruption: true
+      variable: init:Topic.Destination
+      prompt: |
+        And which **destination port** are you interested in for sailings?
+        (or type **same** if you want arrivals at {Topic.PortOfInterest})
+      entity: StringPrebuiltEntity
+
+    - kind: SetVariable
+      id: resolveDestination
+      variable: Topic.ResolvedDestination
+      value: =if(toLower(Topic.Destination) == "same", Topic.PortOfInterest, Topic.Destination)
+
+    # ── Step 3a: Invoke SailingScheduleAgent ─────────────────────────────────
+    # respondDirectlyToUser: false — data returns here, not to the user
+    - kind: InvokeConnectedAgent
+      id: callSailingAgent
+      agentName: SailingScheduleAgent
+      topicName: GetSailingSchedule
+      inputParameters:
+        - name: OriginPort
+          value: =Topic.PortOfInterest
+        - name: DestinationPort
+          value: =Topic.ResolvedDestination
+        - name: DateRange
+          value: "next 30 days"
+      outputParameters:
+        - name: ScheduleData
+          variable: Topic.ScheduleData
+        - name: ScheduleFound
+          variable: Topic.ScheduleFound
+        - name: NextDeparture
+          variable: Topic.NextDeparture
+
+    # ── Step 3b: Invoke PortLocationAgent ────────────────────────────────────
+    # respondDirectlyToUser: false — data returns here, not to the user
+    - kind: InvokeConnectedAgent
+      id: callPortAgent
+      agentName: PortLocationAgent
+      topicName: GetPortLocation
+      inputParameters:
+        - name: PortName
+          value: =Topic.PortOfInterest
+        - name: InfoType
+          value: "all"
+      outputParameters:
+        - name: PortFound
+          variable: Topic.PortFound
+        - name: PortFullName
+          variable: Topic.PortFullName
+        - name: Country
+          variable: Topic.Country
+        - name: Locode
+          variable: Topic.Locode
+        - name: Coordinates
+          variable: Topic.Coordinates
+        - name: Facilities
+          variable: Topic.Facilities
+
+    # ── Step 4: Merge and present combined result (orchestrator formats all) ──
+    - kind: SendActivity
+      id: sendCombinedResult
+      activity: |
+        ## 🗺️ Port Profile: {Topic.PortFullName}
+
+        | Field       | Details               |
+        |-------------|-----------------------|
+        | Country     | {Topic.Country}       |
+        | UN/LOCODE   | {Topic.Locode}        |
+        | Coordinates | {Topic.Coordinates}   |
+        | Facilities  | {Topic.Facilities}    |
+
+        ---
+
+        ## 🗓️ Upcoming Sailings from {Topic.PortFullName} → {Topic.ResolvedDestination}
+
+        {Topic.ScheduleData}
+
+        📅 **Next departure:** {Topic.NextDeparture}
+
+        ---
+
+        Is there anything else you'd like to know?
