@@ -1,0 +1,69 @@
+# =============================================================================
+# Topic: GetScheduleByRoute
+# Type:  Custom Topic (invoked by orchestrator — internal use only)
+# Agent: SailingScheduleAgent (connected, NOT user-facing)
+# =============================================================================
+# Alternative schedule topic focused on specific route lookups.
+# Returns the full route schedule matrix, useful when the orchestrator needs
+# to present multiple service options (e.g. direct vs transshipment routes).
+#
+# INPUT VARIABLES:
+#   - Topic.OriginPort      : Departure port
+#   - Topic.DestinationPort : Destination port
+#   - Topic.ServiceType     : "direct" | "all" (default: "all")
+#
+# OUTPUT VARIABLES:
+#   - Topic.RouteOptions    : Markdown table of all route options
+#   - Topic.DirectAvailable : Boolean — direct service available?
+#   - Topic.TransitPorts    : Comma-separated list of transshipment hubs
+# =============================================================================
+
+kind: AdaptiveDialog
+name: GetScheduleByRoute
+displayName: Get Schedule By Route
+
+beginDialog:
+  kind: OnBeginDialog
+  id: main
+  actions:
+
+    # ── Step 1: Default ServiceType if not provided ───────────────────────────
+    - kind: SetVariable
+      id: defaultServiceType
+      variable: Topic.ServiceType
+      value: =coalesce(Topic.ServiceType, "all")
+
+    # ── Step 2: Query routing engine ──────────────────────────────────────────
+    # In production: HTTP action to your routing/booking API
+    - kind: InvokeFlowAction
+      id: queryRouteFlow
+      flowName: GetRouteOptions
+      inputParameters:
+        - name: Origin
+          value: =Topic.OriginPort
+        - name: Destination
+          value: =Topic.DestinationPort
+        - name: ServiceFilter
+          value: =Topic.ServiceType
+      outputParameters:
+        - name: RouteOptionsJson
+          variable: Topic.RouteOptionsJson
+        - name: HasDirectService
+          variable: Topic.DirectAvailable
+        - name: TransshipmentHubs
+          variable: Topic.TransitPorts
+
+    # ── Step 3: Build route options table ─────────────────────────────────────
+    - kind: SetVariable
+      id: buildRouteTable
+      variable: Topic.RouteOptions
+      value: =FormatRouteTable(Topic.RouteOptionsJson)
+      # Produces output like:
+      # | Service Type   | Via          | Transit | Frequency  |
+      # |----------------|--------------|---------|------------|
+      # | Direct         | —            | 14 days | Weekly     |
+      # | Transshipment  | Port Klang   | 21 days | 3x weekly  |
+
+    # ── Step 4: Return to orchestrator ───────────────────────────────────────
+    - kind: EndDialog
+      id: returnToOrchestrator

@@ -1,0 +1,68 @@
+# =============================================================================
+# Topic: GetPortDetails
+# Type:  Custom Topic (invoked by orchestrator — internal use only)
+# Agent: PortLocationAgent (connected, NOT user-facing)
+# =============================================================================
+# Extended port details topic. Returns richer terminal and berth-level data
+# for ports where detailed facility information is required.
+#
+# INPUT VARIABLES:
+#   - Topic.Locode        : UN/LOCODE of the port (resolved from GetPortLocation)
+#   - Topic.DetailLevel   : "summary" | "full" | "terminals"
+#
+# OUTPUT VARIABLES:
+#   - Topic.Terminals         : Markdown table of terminals by cargo type
+#   - Topic.MaxVesselSize     : Largest vessel class accepted (TEU or DWT)
+#   - Topic.OperatingHours    : Port operating hours
+#   - Topic.Restrictions      : Any vessel or cargo restrictions
+# =============================================================================
+
+kind: AdaptiveDialog
+name: GetPortDetails
+displayName: Get Port Details
+
+beginDialog:
+  kind: OnBeginDialog
+  id: main
+  actions:
+
+    # ── Step 1: Default detail level ──────────────────────────────────────────
+    - kind: SetVariable
+      id: defaultDetailLevel
+      variable: Topic.DetailLevel
+      value: =coalesce(Topic.DetailLevel, "summary")
+
+    # ── Step 2: Query terminal data ───────────────────────────────────────────
+    - kind: InvokeFlowAction
+      id: queryTerminals
+      flowName: GetPortTerminalDetails
+      inputParameters:
+        - name: Locode
+          value: =Topic.Locode
+        - name: DetailLevel
+          value: =Topic.DetailLevel
+      outputParameters:
+        - name: TerminalsJson
+          variable: Topic.TerminalsJson
+        - name: MaxVesselSize
+          variable: Topic.MaxVesselSize
+        - name: OperatingHours
+          variable: Topic.OperatingHours
+        - name: Restrictions
+          variable: Topic.Restrictions
+
+    # ── Step 3: Format terminals table ───────────────────────────────────────
+    - kind: SetVariable
+      id: buildTerminalTable
+      variable: Topic.Terminals
+      value: =FormatTerminalTable(Topic.TerminalsJson)
+      # Produces output like:
+      # | Terminal        | Cargo Type   | Berths | Depth (m) |
+      # |-----------------|--------------|--------|-----------|
+      # | ECT Delta       | Container    | 12     | 16.65     |
+      # | EMO             | Dry Bulk     | 8      | 24.00     |
+      # | Europoort       | Liquid Bulk  | 15     | 28.00     |
+
+    # ── Step 4: Return to orchestrator ───────────────────────────────────────
+    - kind: EndDialog
+      id: returnToOrchestrator

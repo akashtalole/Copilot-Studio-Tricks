@@ -1,0 +1,109 @@
+# =============================================================================
+# Shipping Orchestrator Agent - Main User-Facing Agent
+# =============================================================================
+# This is the PRIMARY agent that end users interact with directly.
+# It orchestrates two connected agents:
+#   1. SailingScheduleAgent  - sailing schedule lookups
+#   2. PortLocationAgent     - port location & details
+#
+# Connected agents are configured with respondDirectlyToUser: false
+# so they ALWAYS return data back to this orchestrator, which then
+# formats and delivers the final response to the user.
+# =============================================================================
+
+kind: Agent
+schemaVersion: "2.0"
+name: ShippingOrchestrator
+displayName: Shipping Assistant
+description: |
+  Main orchestration agent for GlobalShip Logistics. Handles all shipping
+  queries by routing to specialized connected agents and presenting unified
+  responses to end users. Covers sailing schedules and port location queries.
+locale: en-us
+
+# ── Generative AI orchestration enabled ──────────────────────────────────────
+# The orchestrator uses generative AI to automatically detect user intent
+# and decide which connected agent to invoke. No explicit routing code needed.
+orchestration:
+  isGenerativeOrchestrationEnabled: true
+  isOrchestratorAgent: true
+
+# ── System instructions (sent to the LLM as system prompt) ───────────────────
+instructions: |
+  You are the Shipping Assistant for GlobalShip Logistics, a friendly and
+  professional maritime shipping expert.
+
+  ROLE:
+  - You are the ONLY agent that speaks directly to the user.
+  - You have two specialist agents available: SailingScheduleAgent and
+    PortLocationAgent. Use them to retrieve live data before responding.
+  - NEVER tell the user you are "routing" or "handing off" — just seamlessly
+    gather the data and present it.
+
+  BEHAVIOUR:
+  - Always greet the user warmly on first interaction.
+  - When a user asks about schedules, voyages, departure/arrival dates, or
+    transit times → invoke SailingScheduleAgent and include its results.
+  - When a user asks about port locations, facilities, or port details →
+    invoke PortLocationAgent and include its results.
+  - For queries spanning both domains (e.g. "schedule from Hamburg port"),
+    invoke both agents and combine the results into one clear answer.
+  - If the topic is outside shipping, politely redirect.
+  - Respond in clear, concise English. Use markdown tables for schedule data.
+
+# ── Connected Agents ──────────────────────────────────────────────────────────
+# IMPORTANT: respondDirectlyToUser is set to false for both connected agents.
+# This ensures connected agents hand their output back to this orchestrator
+# instead of replying to the user themselves.
+connectedAgents:
+  - name: SailingScheduleAgent
+    displayName: Sailing Schedule Agent
+    description: |
+      Specialist agent for sailing schedules. Invoke this agent when the user
+      asks about: departure dates, arrival dates, voyage numbers, vessel names,
+      transit times, port-to-port schedules, or booking cutoff dates.
+      Returns structured schedule data to the orchestrator.
+    respondDirectlyToUser: false          # ← Key: data flows back to orchestrator
+    handoffBehavior: ReturnToOrchestrator # ← Orchestrator composes the final reply
+    agentFile: ../sailing-schedule-agent/agent.yaml
+
+  - name: PortLocationAgent
+    displayName: Port Location Agent
+    description: |
+      Specialist agent for port information. Invoke this agent when the user
+      asks about: port locations, port coordinates, country/region, available
+      facilities, port codes (UN/LOCODE), or port contact details.
+      Returns structured port data to the orchestrator.
+    respondDirectlyToUser: false          # ← Key: data flows back to orchestrator
+    handoffBehavior: ReturnToOrchestrator # ← Orchestrator composes the final reply
+    agentFile: ../port-location-agent/agent.yaml
+
+# ── Topics ────────────────────────────────────────────────────────────────────
+topics:
+  systemTopics:
+    - file: topics/Greeting.yaml
+    - file: topics/Fallback.yaml
+  customTopics:
+    - file: topics/SailingScheduleInquiry.yaml
+    - file: topics/PortLocationInquiry.yaml
+    - file: topics/CombinedShippingInquiry.yaml
+
+# ── Variables (global state shared across topics) ─────────────────────────────
+variables:
+  - name: Global.CustomerName
+    type: String
+    defaultValue: ""
+  - name: Global.LastQueriedPort
+    type: String
+    defaultValue: ""
+  - name: Global.LastQueriedRoute
+    type: String
+    defaultValue: ""
+
+# ── Knowledge (optional RAG sources) ─────────────────────────────────────────
+# Uncomment and configure when knowledge sources are available
+# knowledge:
+#   - kind: PublicWebsite
+#     url: https://www.globalship.com/schedules
+#   - kind: UploadedDocument
+#     file: knowledge/shipping-terms-glossary.pdf

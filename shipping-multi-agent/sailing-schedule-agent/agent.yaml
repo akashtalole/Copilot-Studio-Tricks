@@ -1,0 +1,101 @@
+# =============================================================================
+# Sailing Schedule Agent - Connected Specialist Agent
+# =============================================================================
+# This agent is a CONNECTED AGENT. It is NOT user-facing.
+#
+# KEY CONFIGURATION:
+#   respondDirectlyToUser: false  ← Connected agents MUST have this set
+#   isOrchestratorAgent: false    ← This is a specialist, not an orchestrator
+#   handoffBehavior: ReturnToOrchestrator ← Always returns data to parent
+#
+# HOW IT WORKS:
+#   1. The ShippingOrchestrator invokes this agent via InvokeConnectedAgent
+#   2. This agent processes the sailing schedule query internally
+#   3. It returns structured schedule data back to the orchestrator
+#   4. The orchestrator formats the data and replies to the user
+#   5. This agent NEVER writes messages directly to the user
+#
+# RESPONSIBILITIES:
+#   - Look up sailing schedules by origin/destination port and date range
+#   - Return departure dates, arrival dates, vessel names, voyage numbers
+#   - Handle booking cutoff date queries
+#   - Return structured data (not prose) for the orchestrator to format
+# =============================================================================
+
+kind: Agent
+schemaVersion: "2.0"
+name: SailingScheduleAgent
+displayName: Sailing Schedule Agent
+description: |
+  Specialist agent that retrieves sailing schedule data. Handles queries about
+  departure dates, arrival dates, voyage numbers, vessel names, transit times,
+  and booking cutoff dates for port-to-port routes. Returns structured data
+  to the orchestrating agent — never responds directly to end users.
+locale: en-us
+
+# ── CRITICAL: This agent is a connected specialist — NOT user-facing ──────────
+orchestration:
+  isOrchestratorAgent: false
+  isGenerativeOrchestrationEnabled: false  # Direct topic invocation only
+  respondDirectlyToUser: false             # ← MUST be false for connected agents
+  handoffBehavior: ReturnToOrchestrator    # ← Always return to parent orchestrator
+
+# ── System instructions ───────────────────────────────────────────────────────
+instructions: |
+  You are the Sailing Schedule specialist for GlobalShip Logistics.
+
+  IMPORTANT: You are a BACKEND agent. You do NOT communicate with end users.
+  You receive queries from the ShippingOrchestrator and return structured
+  sailing schedule data for the orchestrator to present to users.
+
+  RESPONSE FORMAT: Always return data in a structured, machine-readable format
+  using markdown tables so the orchestrator can embed it in its response:
+
+  Example output format:
+  | Voyage   | Vessel        | Departure        | Arrival          | Transit |
+  |----------|---------------|------------------|------------------|---------|
+  | GL-2401  | MV GlobalStar | 2026-04-05 08:00 | 2026-04-19 14:00 | 14 days |
+
+  DATA TO RETURN (as output variables):
+  - ScheduleData: Markdown table of sailings
+  - ScheduleFound: true/false boolean
+  - NextDeparture: Date and vessel of the soonest departure
+  - BookingCutoff: Cutoff date for the next sailing
+
+  NEVER:
+  - Address the user directly ("Hello", "I hope this helps", etc.)
+  - Add conversational filler text
+  - Return empty responses without a ScheduleFound flag
+
+# ── Topics ────────────────────────────────────────────────────────────────────
+topics:
+  customTopics:
+    - file: topics/GetSailingSchedule.yaml
+    - file: topics/GetScheduleByRoute.yaml
+
+# ── Output variables (contract with orchestrator) ────────────────────────────
+# These are the variables this agent populates and returns to the orchestrator.
+outputVariables:
+  - name: ScheduleData
+    type: String
+    description: Markdown table of available sailings
+  - name: ScheduleFound
+    type: Boolean
+    description: Whether any sailings were found for the requested route
+  - name: NextDeparture
+    type: String
+    description: Date and vessel name of the next available departure
+  - name: BookingCutoff
+    type: String
+    description: Booking cutoff date for the next sailing
+
+# ── Knowledge / Data Sources ──────────────────────────────────────────────────
+# Uncomment and configure to connect to live schedule systems
+# knowledge:
+#   - kind: CustomConnector
+#     connectorId: globalship-schedule-api
+#     operations:
+#       - GetSchedulesByRoute
+#       - GetNextDeparture
+#   - kind: SharePointDocument
+#     url: https://globalship.sharepoint.com/sites/ops/schedules

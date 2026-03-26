@@ -1,0 +1,64 @@
+# =============================================================================
+# Topic: Fallback
+# Type:  System Topic (triggered when no other topic matches)
+# Agent: ShippingOrchestrator (user-facing)
+# =============================================================================
+# Handles unrecognised inputs gracefully and guides the user back on track.
+# =============================================================================
+
+kind: AdaptiveDialog
+name: Fallback
+displayName: Fallback
+
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  actions:
+
+    # ── Track fallback count to escalate after repeated failures ──────────────
+    - kind: SetVariable
+      id: incrementFallbackCount
+      variable: Topic.FallbackCount
+      value: =coalesce(Topic.FallbackCount, 0) + 1
+
+    - kind: ConditionGroup
+      id: checkFallbackCount
+      conditions:
+
+        # First or second unrecognised input — offer guided help
+        - id: firstOrSecondAttempt
+          condition: =Topic.FallbackCount <= 2
+          actions:
+            - kind: SendActivity
+              id: sendFallbackHelp
+              activity: |
+                I'm sorry, I didn't quite understand that. 🤔
+
+                I'm specialised in shipping services. Here's what I can help with:
+
+                - 🗓️ **Sailing schedules** — *"When does the next ship leave from Rotterdam?"*
+                - 🗺️ **Port information** — *"Where is the Port of Shanghai?"*
+                - ⚓ **Combined queries** — *"Show me schedules and port details for Hamburg"*
+
+                What would you like to know?
+
+        # Third+ unrecognised input — offer human handoff
+        - id: repeatedFailure
+          condition: =true
+          actions:
+            - kind: SendActivity
+              id: sendEscalation
+              activity: |
+                It seems I'm having trouble understanding your request. 😔
+
+                Let me connect you with our operations team who can assist further:
+
+                - 📧 **Email:** support@globalship.com
+                - 📞 **Phone:** +1-800-GLOBALSHIP
+                - 💬 **Live Chat:** Available Mon–Fri, 08:00–18:00 UTC
+
+                Is there anything else I can try to help you with?
+            - kind: SetVariable
+              id: resetFallbackCount
+              variable: Topic.FallbackCount
+              value: 0
