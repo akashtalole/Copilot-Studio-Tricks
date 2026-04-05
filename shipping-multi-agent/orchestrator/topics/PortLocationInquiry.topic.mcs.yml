@@ -1,0 +1,90 @@
+# Name: Port Location Inquiry
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Port Location Inquiry
+    triggerQueries:
+      - Where is the port of Rotterdam?
+      - Port location for Shanghai
+      - Tell me about Port of Los Angeles
+      - What country is Hamburg port in?
+      - Port facilities at Singapore
+      - UN LOCODE for Felixstowe
+      - Port code for Antwerp
+      - What are the coordinates of Dubai port?
+      - Port of New York details
+      - Port terminal information
+      - Where is this port located?
+      - What facilities does the port have?
+  actions:
+    - kind: SendActivity
+      id: sendAck_c3d5f7
+      activity:
+        text:
+          - I'll look up that port information for you. 🗺️
+
+    - kind: Question
+      id: question_a4e6b8
+      variable: init:Topic.PortName
+      prompt: Which port would you like information about? (e.g. Rotterdam, Shanghai, Los Angeles, Hamburg)
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    # Invoke the PortLocationAgent connected agent.
+    # It never replies to the user — it returns structured port data via outputType.
+    # The orchestrator (this topic) composes the final user-facing response.
+    - kind: BeginDialog
+      id: beginDialog_5e7a9c
+      dialog: shipping_orchestrator.topic.PortLocationAgent
+      input:
+        binding:
+          PortName: =Topic.PortName
+      output:
+        binding:
+          PortFound: Topic.PortFound
+          PortFullName: Topic.PortFullName
+          Country: Topic.Country
+          Region: Topic.Region
+          Locode: Topic.Locode
+          Coordinates: Topic.Coordinates
+          Address: Topic.Address
+          Facilities: Topic.Facilities
+          ContactInfo: Topic.ContactInfo
+
+    - kind: ConditionGroup
+      id: conditionGroup_2b4c6e
+      conditions:
+        - id: condition_portFound
+          condition: =Topic.PortFound = true
+          actions:
+            - kind: SendActivity
+              id: sendPortDetails_7f9d1b
+              activity: |
+                Here is the port profile for **{Topic.PortFullName}**:
+
+                | Field       | Details               |
+                |-------------|-----------------------|
+                | Country     | {Topic.Country}       |
+                | Region      | {Topic.Region}        |
+                | UN/LOCODE   | {Topic.Locode}        |
+                | Coordinates | {Topic.Coordinates}   |
+                | Address     | {Topic.Address}       |
+                | Facilities  | {Topic.Facilities}    |
+                | Contact     | {Topic.ContactInfo}   |
+
+                Would you like to see sailing schedules from **{Topic.PortFullName}**?
+
+      elseActions:
+        - kind: SendActivity
+          id: sendPortNotFound_3a5c8e
+          activity: |
+            I couldn't find a port named **"{Topic.PortName}"**.
+
+            Suggestions:
+            - Check the spelling or use the full official port name
+            - Try the UN/LOCODE directly (e.g. NLRTM for Rotterdam)
+            - Contact our operations team at ops@globalship.com

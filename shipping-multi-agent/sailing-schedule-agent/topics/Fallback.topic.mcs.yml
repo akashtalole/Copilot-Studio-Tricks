@@ -1,0 +1,27 @@
+# Name: Fallback
+# Internal fallback for SailingScheduleAgent.
+# Since this is a backend agent (not user-facing), the fallback sets
+# safe default output values and returns to the orchestrator.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  priority: -1
+  actions:
+    - kind: SetVariable
+      id: setFound_2a4b6c
+      variable: Topic.ScheduleFound
+      value: =false
+
+    - kind: SetVariable
+      id: setData_3b5c7d
+      variable: Topic.ScheduleData
+      value: ""
+
+    - kind: SetVariable
+      id: setNext_4c6d8e
+      variable: Topic.NextDeparture
+      value: "N/A"
+
+    - kind: EndDialog
+      id: endDialog_5d7e9f

@@ -1,0 +1,18 @@
+# Name: Greeting
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnConversationStart
+  id: main
+  actions:
+    - kind: SendActivity
+      id: sendWelcome_3a7f1c
+      activity:
+        text:
+          - |
+            Welcome to **GlobalShip Logistics Assistant**! 👋
+
+            I can help you with:
+            - 🗓️ **Sailing schedules** — departure/arrival dates, transit times, vessel info
+            - 🗺️ **Port information** — locations, facilities, UN/LOCODE codes
+
+            How can I assist you today?

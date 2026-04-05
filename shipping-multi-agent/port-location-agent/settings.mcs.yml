@@ -1,0 +1,14 @@
+displayName: Port Location Agent
+schemaName: port_location_agent
+accessControlPolicy: ChatbotReaders
+authenticationMode: None
+configuration:
+  settings:
+    # false = this agent does not auto-route with generative AI.
+    # It is invoked directly by the orchestrator via BeginDialog / AgentDialog.
+    GenerativeActionsEnabled: false
+
+  recognizer:
+    kind: GenerativeAIRecognizer
+
+language: 1033

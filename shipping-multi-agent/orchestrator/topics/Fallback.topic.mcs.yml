@@ -1,0 +1,43 @@
+# Name: Fallback
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  priority: -1
+  actions:
+    - kind: ConditionGroup
+      id: conditionGroup_1c3e5a
+      conditions:
+        - id: condition_firstAttempt
+          condition: =System.FallbackCount < 3
+          actions:
+            - kind: SendActivity
+              id: sendHelp_7b9d2f
+              activity:
+                text:
+                  - |
+                    I'm sorry, I didn't quite understand that. 🤔
+
+                    I specialise in shipping services. Here's what I can help with:
+                    - 🗓️ **Sailing schedules** — *"When does the next ship leave from Rotterdam?"*
+                    - 🗺️ **Port information** — *"Where is the Port of Shanghai?"*
+                    - ⚓ **Combined queries** — *"Schedules and port details for Hamburg"*
+
+                    What would you like to know?
+                  - |
+                    I didn't quite get that. Could you rephrase? 🤔
+
+                    I can help with sailing schedules and port information.
+
+      elseActions:
+        - kind: SendActivity
+          id: sendEscalate_4a6c8e
+          activity:
+            text:
+              - |
+                I'm having trouble understanding your request. Let me share our
+                support contacts so a specialist can assist you:
+
+                - 📧 **Email:** support@globalship.com
+                - 📞 **Phone:** +1-800-GLOBALSHIP
+                - 💬 **Live Chat:** Mon–Fri 08:00–18:00 UTC

@@ -1,0 +1,100 @@
+# Name: Combined Shipping Inquiry
+# Demonstrates invoking BOTH connected agents sequentially and merging
+# their outputs into a single response. Neither connected agent replies
+# to the user — all data is returned to this orchestrator topic.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Combined Shipping Inquiry
+    triggerQueries:
+      - Schedule from Hamburg with port details
+      - Tell me about sailings from Rotterdam and the port facilities
+      - I need schedule and port info for Singapore
+      - Voyage details including port information
+      - Complete shipping information for Shanghai
+      - What's sailing from Antwerp and where is the port?
+  actions:
+    - kind: SendActivity
+      id: sendAck_d4e6a8
+      activity:
+        text:
+          - I'll pull up both the sailing schedule and port details at the same time. ⚓
+
+    - kind: Question
+      id: question_b5f7c9
+      variable: init:Topic.PortOfInterest
+      prompt: Which port would you like full information about?
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    - kind: Question
+      id: question_8a2d4f
+      variable: init:Topic.Destination
+      prompt: And which destination port are you sailing to from {Topic.PortOfInterest}?
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    # ── Call 1: SailingScheduleAgent ─────────────────────────────────────────
+    # respondDirectlyToUser equivalent: the AgentDialog has no SendActivity —
+    # data is returned via outputType to this topic only.
+    - kind: BeginDialog
+      id: beginDialog_6c9e1a
+      dialog: shipping_orchestrator.topic.SailingScheduleAgent
+      input:
+        binding:
+          OriginPort: =Topic.PortOfInterest
+          DestinationPort: =Topic.Destination
+          DateRange: "next 30 days"
+      output:
+        binding:
+          ScheduleData: Topic.ScheduleData
+          ScheduleFound: Topic.ScheduleFound
+          NextDeparture: Topic.NextDeparture
+
+    # ── Call 2: PortLocationAgent ─────────────────────────────────────────────
+    # Also returns data only — never writes to the user conversation.
+    - kind: BeginDialog
+      id: beginDialog_3f7b2d
+      dialog: shipping_orchestrator.topic.PortLocationAgent
+      input:
+        binding:
+          PortName: =Topic.PortOfInterest
+      output:
+        binding:
+          PortFound: Topic.PortFound
+          PortFullName: Topic.PortFullName
+          Country: Topic.Country
+          Locode: Topic.Locode
+          Coordinates: Topic.Coordinates
+          Facilities: Topic.Facilities
+
+    # ── Orchestrator merges both results into one unified reply ───────────────
+    - kind: SendActivity
+      id: sendCombined_9e3c5b
+      activity: |
+        ## 🗺️ Port Profile: {Topic.PortFullName}
+
+        | Field       | Details              |
+        |-------------|----------------------|
+        | Country     | {Topic.Country}      |
+        | UN/LOCODE   | {Topic.Locode}       |
+        | Coordinates | {Topic.Coordinates}  |
+        | Facilities  | {Topic.Facilities}   |
+
+        ---
+
+        ## 🗓️ Upcoming Sailings: {Topic.PortOfInterest} → {Topic.Destination}
+
+        {Topic.ScheduleData}
+
+        📅 **Next departure:** {Topic.NextDeparture}
+
+        ---
+
+        Is there anything else I can help you with?

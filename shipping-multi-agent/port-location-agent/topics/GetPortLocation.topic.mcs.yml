@@ -1,0 +1,183 @@
+# Name: Get Port Location
+#
+# Entry point topic for PortLocationAgent.
+# Triggered by OnToolSelected when the orchestrator invokes this connected agent.
+# Resolves port data and returns it via output variables — never replies to user.
+
+kind: AdaptiveDialog
+
+inputs:
+  - kind: AutomaticTaskInput
+    propertyName: PortName
+    description: Port name, abbreviation, or UN/LOCODE provided by the orchestrator
+    entity: StringPrebuiltEntity
+    shouldPromptUser: false
+
+modelDescription: Resolves a port name or UN/LOCODE to official port details including country, region, coordinates, facilities, and contact information. Returns structured data to the orchestrator.
+
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent: {}
+  actions:
+    # ── Normalise input ────────────────────────────────────────────────────────
+    - kind: SetVariable
+      id: setNorm_1a3b5c
+      variable: Topic.NormalisedPortName
+      value: =Trim(Topic.PortName)
+
+    # ── Detect if input is a UN/LOCODE (5 uppercase chars) ────────────────────
+    - kind: SetVariable
+      id: detectCode_2b4c6d
+      variable: Topic.IsLocode
+      value: =And(Len(Topic.NormalisedPortName) = 5, Upper(Topic.NormalisedPortName) = Topic.NormalisedPortName)
+
+    # ── Query port database ────────────────────────────────────────────────────
+    # Replace with your actual connector (e.g. Dataverse, custom API, SharePoint list).
+    # The operation should accept a port name or LOCODE and return port details.
+    - kind: InvokeConnectorAction
+      id: lookupPort_3c5d7e
+      connectionReference: shared_globalship_portdatabase
+      connectionProperties:
+        mode: Invoker
+      operationId: LookupPortByNameOrLocode
+      input:
+        binding:
+          query: =Topic.NormalisedPortName
+          isLocode: =Topic.IsLocode
+      output:
+        kind: SingleVariableOutputBinding
+        variable: init:Topic.PortResponse
+
+    # ── Map response to output variables ──────────────────────────────────────
+    - kind: SetVariable
+      id: setFound_4d6e8f
+      variable: Topic.PortFound
+      value: =!IsBlank(Topic.PortResponse.locode)
+
+    - kind: ConditionGroup
+      id: conditionGroup_5e7f9a
+      conditions:
+        - id: condition_portFound
+          condition: =Topic.PortFound = true
+          actions:
+            - kind: SetVariable
+              id: setFullName_6f8a1b
+              variable: Topic.PortFullName
+              value: =Topic.PortResponse.officialName
+
+            - kind: SetVariable
+              id: setCountry_7a9b2c
+              variable: Topic.Country
+              value: =Topic.PortResponse.country
+
+            - kind: SetVariable
+              id: setRegion_8b1c3d
+              variable: Topic.Region
+              value: =Topic.PortResponse.region
+
+            - kind: SetVariable
+              id: setLocode_9c2d4e
+              variable: Topic.Locode
+              value: =Topic.PortResponse.locode
+
+            - kind: SetVariable
+              id: setCoords_1d3e5f
+              variable: Topic.Coordinates
+              value: =Text(Topic.PortResponse.latitude) & "° N, " & Text(Topic.PortResponse.longitude) & "° E"
+
+            - kind: SetVariable
+              id: setAddr_2e4f6a
+              variable: Topic.Address
+              value: =Topic.PortResponse.address
+
+            - kind: SetVariable
+              id: setFacil_3f5a7b
+              variable: Topic.Facilities
+              value: =Concat(Topic.PortResponse.facilities, ", ")
+
+            - kind: SetVariable
+              id: setContact_4a6b8c
+              variable: Topic.ContactInfo
+              value: =Topic.PortResponse.email & " | " & Topic.PortResponse.phone
+
+      elseActions:
+        - kind: SetVariable
+          id: clearAll_5b7c9d
+          variable: Topic.PortFullName
+          value: ""
+        - kind: SetVariable
+          id: clearCountry_6c8d1e
+          variable: Topic.Country
+          value: ""
+        - kind: SetVariable
+          id: clearRegion_7d9e2f
+          variable: Topic.Region
+          value: ""
+        - kind: SetVariable
+          id: clearLocode_8e1f3a
+          variable: Topic.Locode
+          value: ""
+        - kind: SetVariable
+          id: clearCoords_9f2a4b
+          variable: Topic.Coordinates
+          value: ""
+        - kind: SetVariable
+          id: clearAddr_1a3b5c
+          variable: Topic.Address
+          value: ""
+        - kind: SetVariable
+          id: clearFacil_2b4c6d
+          variable: Topic.Facilities
+          value: ""
+        - kind: SetVariable
+          id: clearContact_3c5d7e
+          variable: Topic.ContactInfo
+          value: ""
+
+# Input/output contract (mirrors the AgentDialog in the orchestrator)
+inputType:
+  properties:
+    PortName:
+      displayName: Port Name
+      description: Port name, abbreviation, or UN/LOCODE
+      type: String
+
+outputType:
+  properties:
+    PortFound:
+      displayName: Port Found
+      description: true if the port was identified, false otherwise
+      type: Boolean
+    PortFullName:
+      displayName: Port Full Name
+      description: Official UNECE port name
+      type: String
+    Country:
+      displayName: Country
+      description: Country where the port is located
+      type: String
+    Region:
+      displayName: Region
+      description: State, province, or region
+      type: String
+    Locode:
+      displayName: UN/LOCODE
+      description: UN/LOCODE identifier (e.g. NLRTM)
+      type: String
+    Coordinates:
+      displayName: Coordinates
+      description: GPS coordinates in decimal degrees
+      type: String
+    Address:
+      displayName: Address
+      description: Port authority street address
+      type: String
+    Facilities:
+      displayName: Facilities
+      description: Comma-separated list of available facilities
+      type: String
+    ContactInfo:
+      displayName: Contact Info
+      description: Port authority email and phone
+      type: String

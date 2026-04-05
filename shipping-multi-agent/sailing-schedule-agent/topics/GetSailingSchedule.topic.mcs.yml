@@ -1,0 +1,143 @@
+# Name: Get Sailing Schedule
+#
+# Entry point topic for SailingScheduleAgent.
+# Triggered by OnToolSelected when the orchestrator invokes this connected agent.
+# Retrieves schedule data and returns it via output variables — never replies to user.
+
+kind: AdaptiveDialog
+
+# Input variables passed in from the orchestrator's AgentDialog binding
+inputs:
+  - kind: AutomaticTaskInput
+    propertyName: OriginPort
+    description: The departure port name provided by the orchestrator
+    entity: StringPrebuiltEntity
+    shouldPromptUser: false
+
+  - kind: AutomaticTaskInput
+    propertyName: DestinationPort
+    description: The arrival port name provided by the orchestrator
+    entity: StringPrebuiltEntity
+    shouldPromptUser: false
+
+  - kind: AutomaticTaskInput
+    propertyName: DateRange
+    description: The preferred departure window provided by the orchestrator
+    entity: StringPrebuiltEntity
+    shouldPromptUser: false
+
+modelDescription: Retrieves sailing schedule data for the given origin, destination, and date range. Returns a markdown table of sailings, a boolean indicating if schedules were found, and the next departure details.
+
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent: {}
+  actions:
+    # ── Normalise inputs ───────────────────────────────────────────────────────
+    - kind: SetVariable
+      id: setOrigin_1a3b5c
+      variable: Topic.NormalisedOrigin
+      value: =Trim(Upper(Topic.OriginPort))
+
+    - kind: SetVariable
+      id: setDest_2b4c6d
+      variable: Topic.NormalisedDestination
+      value: =Trim(Upper(Topic.DestinationPort))
+
+    - kind: SetVariable
+      id: setRange_3c5d7e
+      variable: Topic.ResolvedDateRange
+      value: =If(IsBlank(Topic.DateRange), "next 30 days", Topic.DateRange)
+
+    # ── Query schedule via connector action ────────────────────────────────────
+    # Replace with your actual Power Automate flow or connector operation.
+    # The flow should accept OriginPort, DestinationPort, DateRange and return
+    # a JSON array of sailings plus a record count.
+    - kind: InvokeConnectorAction
+      id: querySchedule_4d6e8f
+      connectionReference: shared_globalship_scheduleapi
+      connectionProperties:
+        mode: Invoker
+      operationId: GetSchedulesByRoute
+      input:
+        binding:
+          origin: =Topic.NormalisedOrigin
+          destination: =Topic.NormalisedDestination
+          dateRange: =Topic.ResolvedDateRange
+      output:
+        kind: SingleVariableOutputBinding
+        variable: init:Topic.ScheduleResponse
+
+    # ── Determine if records were found ────────────────────────────────────────
+    - kind: SetVariable
+      id: setFound_5e7f9a
+      variable: Topic.ScheduleFound
+      value: =Topic.ScheduleResponse.count > 0
+
+    - kind: ConditionGroup
+      id: conditionGroup_6f8a1b
+      conditions:
+        - id: condition_hasData
+          condition: =Topic.ScheduleFound = true
+          actions:
+            # Format the schedule as a markdown table for the orchestrator to embed
+            - kind: SetVariable
+              id: setTable_7a9b2c
+              variable: Topic.ScheduleData
+              value: |
+                =Concat(
+                  "| Voyage | Vessel | Departure | Arrival | Transit |\n",
+                  "|--------|--------|-----------|---------|----------|\n",
+                  Concat(Topic.ScheduleResponse.sailings,
+                    "| " & voyageId & " | " & vesselName & " | " &
+                    departureDate & " | " & arrivalDate & " | " &
+                    transitDays & " days |\n"
+                  )
+                )
+
+            - kind: SetVariable
+              id: setNext_8b1c3d
+              variable: Topic.NextDeparture
+              value: =First(Topic.ScheduleResponse.sailings).departureDate & " aboard " & First(Topic.ScheduleResponse.sailings).vesselName & " (Voyage " & First(Topic.ScheduleResponse.sailings).voyageId & ")"
+
+      elseActions:
+        - kind: SetVariable
+          id: setEmpty_9c2d4e
+          variable: Topic.ScheduleData
+          value: ""
+
+        - kind: SetVariable
+          id: setNoNext_1d3e5f
+          variable: Topic.NextDeparture
+          value: "N/A"
+
+# Output variables returned to the orchestrator
+inputType:
+  properties:
+    OriginPort:
+      displayName: Origin Port
+      description: The departure port name
+      type: String
+    DestinationPort:
+      displayName: Destination Port
+      description: The arrival port name
+      type: String
+    DateRange:
+      displayName: Date Range
+      description: Preferred departure window
+      type: String
+
+outputType:
+  properties:
+    ScheduleData:
+      displayName: Schedule Data
+      description: Markdown table of available sailings
+      type: String
+    ScheduleFound:
+      displayName: Schedule Found
+      description: true if sailings were found, false otherwise
+      type: Boolean
+    NextDeparture:
+      displayName: Next Departure
+      description: Details of the next available sailing
+      type: String

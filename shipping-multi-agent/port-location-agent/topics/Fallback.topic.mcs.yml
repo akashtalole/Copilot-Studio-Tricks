@@ -1,0 +1,27 @@
+# Name: Fallback
+# Internal fallback for PortLocationAgent.
+# Since this is a backend agent (not user-facing), the fallback sets
+# PortFound = false and safe empty defaults, then returns to the orchestrator.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  priority: -1
+  actions:
+    - kind: SetVariable
+      id: setFound_1a2b3c
+      variable: Topic.PortFound
+      value: =false
+
+    - kind: SetVariable
+      id: clearName_2b3c4d
+      variable: Topic.PortFullName
+      value: ""
+
+    - kind: SetVariable
+      id: clearLocode_3c4d5e
+      variable: Topic.Locode
+      value: ""
+
+    - kind: EndDialog
+      id: endDialog_4d5e6f

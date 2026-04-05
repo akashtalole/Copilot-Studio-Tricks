@@ -1,0 +1,14 @@
+displayName: Shipping Assistant
+schemaName: shipping_orchestrator
+accessControlPolicy: ChatbotReaders
+authenticationMode: None
+configuration:
+  settings:
+    # true = generative AI automatically routes to connected agents based on
+    # the description fields in each AgentDialog (OnToolSelected) file.
+    GenerativeActionsEnabled: true
+
+  recognizer:
+    kind: GenerativeAIRecognizer
+
+language: 1033

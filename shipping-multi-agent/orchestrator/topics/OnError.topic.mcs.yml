@@ -1,0 +1,45 @@
+# Name: On Error
+kind: AdaptiveDialog
+startBehavior: UseLatestPublishedContentAndCancelOtherTopics
+beginDialog:
+  kind: OnError
+  id: main
+  actions:
+    - kind: SetVariable
+      id: setVar_2d4f6b
+      variable: init:Topic.CurrentTime
+      value: =Text(Now(), DateTimeFormat.UTC)
+
+    - kind: ConditionGroup
+      id: conditionGroup_8a1c3e
+      conditions:
+        - id: condition_testMode
+          condition: =System.Conversation.InTestMode = true
+          actions:
+            - kind: SendActivity
+              id: sendTestError_5f7b9d
+              activity: |-
+                Error Message: {System.Error.Message}
+                Error Code: {System.Error.Code}
+                Conversation Id: {System.Conversation.Id}
+                Time (UTC): {Topic.CurrentTime}
+
+      elseActions:
+        - kind: SendActivity
+          id: sendUserError_1e3a5c
+          activity:
+            text:
+              - |
+                I'm sorry, something went wrong on my end.
+                Error code: {System.Error.Code}
+                Conversation Id: {System.Conversation.Id}
+
+                Please try again or contact support@globalship.com if this persists.
+
+    - kind: LogCustomTelemetryEvent
+      id: logError_7b9f2d
+      eventName: ShippingAssistantError
+      properties: "={ErrorMessage: System.Error.Message, ErrorCode: System.Error.Code, TimeUTC: Topic.CurrentTime, ConversationId: System.Conversation.Id}"
+
+    - kind: CancelAllDialogs
+      id: cancelAll_4c6e8a

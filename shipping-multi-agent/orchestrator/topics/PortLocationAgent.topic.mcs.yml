@@ -1,0 +1,106 @@
+# Name: Port Location Agent
+# PortLocationAgent
+#
+# This file defines how the ShippingOrchestrator references and invokes
+# the PortLocationAgent connected agent.
+#
+# KEY PATTERN — "no direct reply to user":
+#   kind: AgentDialog + OnToolSelected means this agent is invoked as a TOOL
+#   by the orchestrator's generative AI. It returns structured data via
+#   outputType properties. It has NO SendActivity nodes, so it NEVER writes
+#   messages to the user. All user communication is handled by the orchestrator.
+#
+# The 'description' field is what the orchestrator's generative AI reads to
+# decide WHEN to invoke this agent — make it specific and include examples.
+
+kind: AgentDialog
+
+beginDialog:
+  kind: OnToolSelected
+  id: main
+  description: |
+    Invoke this agent when the user asks about port locations, port details,
+    port facilities, UN/LOCODE codes, GPS coordinates, country or region of a
+    port, port authority contact details, or terminal information.
+
+    Example user messages that should route here:
+    - "Where is the Port of Rotterdam located?"
+    - "What country is Hamburg port in?"
+    - "What is the UN/LOCODE for Singapore?"
+    - "Tell me about the facilities at Port of Los Angeles"
+    - "What are the GPS coordinates of Antwerp port?"
+    - "How do I contact the Port of Shanghai authority?"
+    - "What terminals are available at Felixstowe?"
+
+settings:
+  instructions: |
+    You are the Port Information specialist for GlobalShip Logistics.
+
+    IMPORTANT: You are a backend specialist. Do NOT send any messages to the
+    user. Only populate the output variables defined in outputType and return
+    them to the orchestrating agent (Shipping Assistant).
+
+    Port name resolution rules:
+    - Accept common names, abbreviations, and UN/LOCODEs as input
+    - Always return the official UNECE port name in PortFullName
+    - Handle common variations:
+        "Rotterdam" → "Port of Rotterdam"
+        "LA" or "Los Angeles" → "Port of Los Angeles"
+        "NLRTM" → "Port of Rotterdam"
+    - If port is ambiguous, return the most globally significant match
+    - Set PortFound = false if the port cannot be identified
+
+# Input contract: values provided by the orchestrator when invoking this agent
+inputType:
+  properties:
+    PortName:
+      displayName: Port Name
+      description: |
+        Port name, common abbreviation, or UN/LOCODE.
+        Examples: "Rotterdam", "LA", "SGSIN", "Port of Hamburg"
+      type: String
+
+# Output contract: structured data returned to the orchestrator.
+# The orchestrator uses these values to compose the final user-facing response.
+# This is the mechanism that prevents the connected agent from replying directly
+# to the user — all results flow back as typed output properties.
+outputType:
+  properties:
+    PortFound:
+      displayName: Port Found
+      description: true if the port was successfully identified, false otherwise
+      type: Boolean
+    PortFullName:
+      displayName: Port Full Name
+      description: Official UNECE port name (e.g. "Port of Rotterdam")
+      type: String
+    Country:
+      displayName: Country
+      description: Country where the port is located (e.g. "Netherlands")
+      type: String
+    Region:
+      displayName: Region
+      description: State, province, or region (e.g. "South Holland")
+      type: String
+    Locode:
+      displayName: UN/LOCODE
+      description: UN/LOCODE identifier (e.g. "NLRTM")
+      type: String
+    Coordinates:
+      displayName: Coordinates
+      description: GPS coordinates in decimal degrees (e.g. "51.9225° N, 4.4792° E")
+      type: String
+    Address:
+      displayName: Address
+      description: Port authority street address
+      type: String
+    Facilities:
+      displayName: Facilities
+      description: |
+        Comma-separated list of available terminal/cargo handling facilities,
+        e.g. "Container, Dry Bulk, Liquid Bulk, Ro-Ro, Cruise"
+      type: String
+    ContactInfo:
+      displayName: Contact Info
+      description: Port authority email and phone (e.g. "info@portofrotterdam.com | +31-10-252-1010")
+      type: String

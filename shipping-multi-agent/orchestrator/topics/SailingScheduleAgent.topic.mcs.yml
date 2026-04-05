@@ -1,0 +1,89 @@
+# Name: Sailing Schedule Agent
+# SailingScheduleAgent
+#
+# This file defines how the ShippingOrchestrator references and invokes
+# the SailingScheduleAgent connected agent.
+#
+# KEY PATTERN — "no direct reply to user":
+#   kind: AgentDialog + OnToolSelected means this agent is invoked as a TOOL
+#   by the orchestrator's generative AI. It returns structured data via
+#   outputType properties. It has NO SendActivity nodes, so it NEVER writes
+#   messages to the user. All user communication is handled by the orchestrator.
+#
+# The 'description' field is what the orchestrator's generative AI reads to
+# decide WHEN to invoke this agent — make it specific and include examples.
+
+kind: AgentDialog
+
+beginDialog:
+  kind: OnToolSelected
+  id: main
+  description: |
+    Invoke this agent when the user asks about sailing schedules, departure dates,
+    arrival dates, voyage numbers, vessel names, transit times, or booking cutoff
+    dates between two ports.
+
+    Example user messages that should route here:
+    - "When does the next ship leave from Rotterdam?"
+    - "What's the schedule from Shanghai to Los Angeles?"
+    - "Show me sailings in April from Hamburg"
+    - "What is the transit time from Singapore to Dubai?"
+    - "What's the booking cutoff for the next sailing?"
+    - "Are there any voyages from Antwerp to New York this month?"
+
+settings:
+  instructions: |
+    You are the Sailing Schedule specialist for GlobalShip Logistics.
+
+    IMPORTANT: You are a backend specialist. Do NOT send any messages to the
+    user. Only populate the output variables defined in outputType and return
+    them to the orchestrating agent (Shipping Assistant).
+
+    When retrieving schedules:
+    - Format ScheduleData as a markdown table:
+      | Voyage | Vessel | Departure | Arrival | Transit |
+      |--------|--------|-----------|---------|---------|
+    - Populate ScheduleFound as true if any sailings exist, false otherwise.
+    - Populate NextDeparture as: "YYYY-MM-DD aboard [Vessel] (Voyage [ID])"
+    - If no sailings found, set ScheduleData to an empty string and ScheduleFound to false.
+
+# Input contract: values provided by the orchestrator when invoking this agent
+inputType:
+  properties:
+    OriginPort:
+      displayName: Origin Port
+      description: The departure port name (e.g. Rotterdam, Shanghai, Hamburg)
+      type: String
+    DestinationPort:
+      displayName: Destination Port
+      description: The arrival/destination port name (e.g. Los Angeles, New York)
+      type: String
+    DateRange:
+      displayName: Date Range
+      description: |
+        Preferred departure window, e.g. "next 2 weeks", "April 2026", "any".
+        Defaults to "next 30 days" if not provided.
+      type: String
+
+# Output contract: structured data returned to the orchestrator.
+# The orchestrator uses these values to compose the final user-facing response.
+# This is the mechanism that prevents the connected agent from replying directly
+# to the user — all results flow back as typed output properties.
+outputType:
+  properties:
+    ScheduleData:
+      displayName: Schedule Data
+      description: |
+        Markdown table of available sailings with columns:
+        Voyage, Vessel, Departure, Arrival, Transit
+      type: String
+    ScheduleFound:
+      displayName: Schedule Found
+      description: true if one or more sailings were found, false otherwise
+      type: Boolean
+    NextDeparture:
+      displayName: Next Departure
+      description: |
+        Human-readable string describing the next available sailing,
+        e.g. "2026-04-10 aboard MV StarRose (Voyage GL-2401)"
+      type: String

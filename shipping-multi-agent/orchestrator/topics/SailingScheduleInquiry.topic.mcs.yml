@@ -1,0 +1,103 @@
+# Name: Sailing Schedule Inquiry
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Sailing Schedule Inquiry
+    triggerQueries:
+      - What is the sailing schedule?
+      - When does the ship depart?
+      - Show me sailing schedules from Shanghai
+      - Next vessel from Rotterdam to New York
+      - Departure dates from Hamburg
+      - What ships are sailing to Los Angeles?
+      - Schedule from Singapore to Dubai
+      - Transit time from Felixstowe to Montreal
+      - When is the next sailing?
+      - Available sailings this month
+      - Booking cutoff for next departure
+      - What voyages are available?
+  actions:
+    - kind: SendActivity
+      id: sendAck_b2c4e6
+      activity:
+        text:
+          - Let me look up the sailing schedule for you. 🔍
+
+    - kind: Question
+      id: question_f8a1d3
+      variable: init:Topic.OriginPort
+      prompt: Which **origin port** are you sailing from? (e.g. Shanghai, Rotterdam, Hamburg)
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    - kind: Question
+      id: question_9e2b5c
+      variable: init:Topic.DestinationPort
+      prompt: Which **destination port** are you sailing to? (e.g. Los Angeles, New York, Singapore)
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    - kind: Question
+      id: question_7d4f1a
+      variable: init:Topic.DateRange
+      prompt: |
+        Do you have a preferred departure window?
+        (e.g. "next 2 weeks", "April 2026", or type **any** for all upcoming sailings)
+      entity: StringPrebuiltEntity
+      alwaysPrompt: true
+      interruptionPolicy:
+        allowInterruption: true
+
+    # Invoke the SailingScheduleAgent connected agent.
+    # Because SailingScheduleAgent is defined with kind: AgentDialog and
+    # OnToolSelected, and GenerativeActionsEnabled: true in settings.mcs.yml,
+    # the orchestrator's generative AI automatically calls it here.
+    # The agent returns data via outputType variables — it never replies to the user.
+    - kind: BeginDialog
+      id: beginDialog_4c8e2f
+      dialog: shipping_orchestrator.topic.SailingScheduleAgent
+      input:
+        binding:
+          OriginPort: =Topic.OriginPort
+          DestinationPort: =Topic.DestinationPort
+          DateRange: =Topic.DateRange
+      output:
+        binding:
+          ScheduleData: Topic.ScheduleData
+          ScheduleFound: Topic.ScheduleFound
+          NextDeparture: Topic.NextDeparture
+
+    - kind: ConditionGroup
+      id: conditionGroup_1a3b5d
+      conditions:
+        - id: condition_scheduleFound
+          condition: =Topic.ScheduleFound = true
+          actions:
+            - kind: SendActivity
+              id: sendSchedule_6f9c2e
+              activity: |
+                Here are the upcoming sailings on the **{Topic.OriginPort} → {Topic.DestinationPort}** route:
+
+                {Topic.ScheduleData}
+
+                📅 **Next departure:** {Topic.NextDeparture}
+
+                Would you like port details for either of these locations?
+
+      elseActions:
+        - kind: SendActivity
+          id: sendNoSchedule_8b4d7a
+          activity: |
+            I'm sorry, I couldn't find any upcoming sailings on the
+            **{Topic.OriginPort} → {Topic.DestinationPort}** route for "{Topic.DateRange}".
+
+            You could try:
+            - A broader date range (e.g. "next 3 months")
+            - Nearby alternative ports
+            - Our bookings team at bookings@globalship.com
